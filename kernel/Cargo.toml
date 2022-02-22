@@ -1,0 +1,20 @@
+[package]
+name = "arc"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bootloader = "0.10.12"
+arch = { path = "../arch" }
+
+[dev-dependencies]
+bootloader-locator = "0.0.4"
+
+# Disables unwinding
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
