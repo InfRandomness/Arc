@@ -3,8 +3,8 @@
 
 mod vga;
 
+use arch::{hal, Hal};
 use core::panic::PanicInfo;
-use arch::{Hal, hal};
 
 static HELLO: &[u8] = b"Hello world!";
 
