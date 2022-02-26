@@ -5,11 +5,13 @@ mod vga;
 
 use arch::{hal, Hal};
 use core::panic::PanicInfo;
+use bootloader::{BootInfo, entry_point};
 
 static HELLO: &[u8] = b"Hello world!";
 
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+entry_point!(kmain);
+
+fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let vga_buffer = 0xb8000 as *mut u8;
 
     for (i, &byte) in HELLO.iter().enumerate() {
