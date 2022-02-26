@@ -11,13 +11,16 @@ use std::process::Command;
 type DynError = Box<dyn std::error::Error>;
 
 fn main() {
-    println!("Hello, world!");
+    if let Err(e) = try_main() {
+        eprintln!("{}", e);
+        std::process::exit(-1)
+    }
 }
 
 fn try_main() -> Result<(), DynError> {
     let task = env::args().nth(1);
-    match task.as_deref().map(|it| it.as_str()) {
-        Some("image") => image(std::env::args().skip(1))?,
+    match task.as_ref().map(|it| it.as_str()) {
+        Some("image") => image(std::env::args().skip(2))?,
         _ => print_help(),
     }
     Ok(())
@@ -25,9 +28,10 @@ fn try_main() -> Result<(), DynError> {
 
 const RUN_ARGS: &[&str] = &["--no-reboot", "-s"];
 
-fn image(mut args: Skip<Args>) {
+fn image(mut args: Skip<Args>) -> Result<(), DynError> {
+    // TODO: Make a friendlier experience by telling the path was not found
     let kernel_binary_path = {
-        let path = PathBuf::from(args.next().unwrap());
+        let path = PathBuf::from(args.nth(0).unwrap());
         path.canonicalize().unwrap()
     };
 
@@ -56,6 +60,7 @@ fn image(mut args: Skip<Args>) {
     if !exit_status.success() {
         std::process::exit(exit_status.code().or(1));
     }
+    Ok(())
 }
 
 fn create_disk_image(kernel_binary_path: &Path) -> PathBuf {
