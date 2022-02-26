@@ -44,22 +44,7 @@ fn image(mut args: Skip<Args>) -> Result<(), DynError> {
         "x86_64-arc-uefi".to_string()
     };
 
-    let bios = create_disk_image(&kernel_binary_path, target_image);
-
-    if !should_boot {
-        println!("Created disk image at {}", bios.display());
-        return;
-    }
-
-    let mut run_cmd = Command::new("qemu-system-x86_64");
-    run_cmd.arg("-drive")
-        .arg(format!("format=raw,file={}", bios.display()));
-    run_cmd.args(RUN_ARGS);
-
-    let exit_status = run_cmd.status().unwrap();
-    if !exit_status.success() {
-        std::process::exit(exit_status.code().or(1));
-    }
+    create_disk_image(&kernel_binary_path, target_image);
     Ok(())
 }
 
