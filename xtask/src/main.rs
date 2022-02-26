@@ -35,16 +35,16 @@ fn image(mut args: Skip<Args>) -> Result<(), DynError> {
         path.canonicalize().unwrap()
     };
 
-    let should_boot = if let Some(arg) = args.next() {
+    let target_image: String = if let Some(arg) = args.next() {
         match arg.as_str() {
-            "--no-run" => true,
+            "--target" => arg,
             other => panic!("Unexpected argument {}", other),
         }
     } else {
-        false
+        "x86_64-arc-uefi".to_string()
     };
 
-    let bios = create_disk_image(&kernel_binary_path);
+    let bios = create_disk_image(&kernel_binary_path, target_image);
 
     if !should_boot {
         println!("Created disk image at {}", bios.display());
@@ -63,9 +63,9 @@ fn image(mut args: Skip<Args>) -> Result<(), DynError> {
     Ok(())
 }
 
-fn create_disk_image(kernel_binary_path: &Path) -> PathBuf {
-    let bootloader_manifest_path = bootloader_locator::locate_bootloader("bootloader").unwrap();
-    let kernel_manifest_path = locate_cargo_manifest::locate_manifest().unwrap();
+fn create_disk_image(kernel_binary_path: &Path, target_json: String) -> PathBuf {
+    let kernel_manifest_path = PathBuf::from("../kernel");
+    let bootloader_manifest_path = bootloader_locator::locate_bootloader("bootloader", Some(&kernel_manifest_path)).unwrap();
 
     let mut build_cmd = Command::new(env!("CARGO"));
     build_cmd.current_dir(bootloader_manifest_path.parent().unwrap());
@@ -75,6 +75,7 @@ fn create_disk_image(kernel_binary_path: &Path) -> PathBuf {
     build_cmd.arg("--kernel-binary").arg(&kernel_binary_path);
     build_cmd.arg("--target-dir").arg(kernel_manifest_path.parent().unwrap().join("target"));
     build_cmd.arg("--out-dir").arg(kernel_binary_path.parent().unwrap());
+    build_cmd.arg("--target").arg(target_json);
     build_cmd.arg("--quiet");
 
     if !build_cmd.status().unwrap().success() {

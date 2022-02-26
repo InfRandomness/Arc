@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bootloader-locator = "0.0.4"
+bootloader-locator = { path = "/home/infrandomness/CLionProjects/bootloader-locator/" }
 locate-cargo-manifest = "0.2.2"
