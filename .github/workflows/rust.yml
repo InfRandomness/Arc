@@ -1,0 +1,22 @@
+name: Rust
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build kernel
+      run: cargo build --manifest-path=kernel/Cargo.toml
+    - name: Build bootloader
+      run: cd xtask; cargo xtask image ../target/x86_64-arc/kernel
