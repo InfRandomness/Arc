@@ -6,5 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bootloader-locator = { path = "/home/infrandomness/CLionProjects/bootloader-locator/" }
+bootloader-locator = { git = "https://github.com/InfRandomness/bootloader-locator.git", branch = "metadata_path" }
 locate-cargo-manifest = "0.2.2"
+project-root = "0.2.2"

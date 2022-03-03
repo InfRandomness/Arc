@@ -1,3 +1,5 @@
+extern crate core;
+
 use std::env;
 use std::env::Args;
 use std::iter::Skip;
@@ -15,39 +17,56 @@ fn main() {
 
 fn try_main() -> Result<(), DynError> {
     let task = env::args().nth(1);
-    match task.as_ref().map(|it| it.as_str()) {
+    match task.as_deref() {
         Some("image") => image(std::env::args().skip(2))?,
         _ => print_help(),
     }
     Ok(())
 }
 
-const RUN_ARGS: &[&str] = &["--no-reboot", "-s"];
-
 fn image(mut args: Skip<Args>) -> Result<(), DynError> {
     // TODO: Make a friendlier experience by telling the path was not found
     let kernel_binary_path = {
-        let path = PathBuf::from(args.nth(0).unwrap());
+        let path = PathBuf::from(
+            args.next()
+                .expect("No path to the kernel binary was found."),
+        );
         path.canonicalize().unwrap()
     };
 
-    let target_image: String = if let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--target" => arg,
-            other => panic!("Unexpected argument {}", other),
-        }
-    } else {
-        "x86_64-arc-uefi".to_string()
-    };
+    /*
+    let target = args.next().map_or_else(
+        || {
+            println!("No target value was provided, defaulting to x86_64_unknown_uefi");
+            "x86_64-unknown-uefi"
+        },
+        |image_str| match image_str.as_ref() {
+            "x86_64-arc" | "x86_64-unknown-none" => "x86_64-unknown-none",
+            "aarch64-unknown-none" | "aarch64-arc.json" => {
+                panic!("The bootloader currently doesn't support ARM targets.");
+            }
+            _ => panic!("Unsupported architecture."),
+        },
+    );
+    */
 
-    create_disk_image(&kernel_binary_path, target_image);
+    create_disk_image(&kernel_binary_path);
     Ok(())
 }
 
-fn create_disk_image(kernel_binary_path: &Path, target_json: String) -> PathBuf {
-    let kernel_manifest_path = PathBuf::from("../kernel");
+fn create_disk_image(kernel_binary_path: &Path) -> PathBuf {
+    //TODO: Fix this terrible hack.
+    let project_root = project_root::get_project_root().expect("Unable to find a project root");
+
+    let kernel_manifest_path = PathBuf::from(project_root).join("../kernel/Cargo.toml");
     let bootloader_manifest_path =
-        bootloader_locator::locate_bootloader("bootloader", Some(&kernel_manifest_path)).unwrap();
+        bootloader_locator::locate_bootloader("bootloader", Some(&kernel_manifest_path))
+            .unwrap_or_else(|err| {
+                panic!(
+                    "an unrecoverable error occurred while locating the bootloader: \n{}",
+                    err
+                )
+            });
 
     let mut build_cmd = Command::new(env!("CARGO"));
     build_cmd.current_dir(bootloader_manifest_path.parent().unwrap());
@@ -56,13 +75,18 @@ fn create_disk_image(kernel_binary_path: &Path, target_json: String) -> PathBuf 
         .arg("--kernel-manifest")
         .arg(&kernel_manifest_path);
     build_cmd.arg("--kernel-binary").arg(&kernel_binary_path);
-    build_cmd
-        .arg("--target-dir")
-        .arg(kernel_manifest_path.parent().unwrap().join("target"));
+    // TODO: Fix this too.
+    build_cmd.arg("--target-dir").arg(
+        kernel_manifest_path
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("target"),
+    );
     build_cmd
         .arg("--out-dir")
         .arg(kernel_binary_path.parent().unwrap());
-    build_cmd.arg("--target").arg(target_json);
     build_cmd.arg("--quiet");
 
     if !build_cmd.status().unwrap().success() {
@@ -74,6 +98,7 @@ fn create_disk_image(kernel_binary_path: &Path, target_json: String) -> PathBuf 
         .parent()
         .unwrap()
         .join(format!("boot-bios-{}.img", kernel_binary_name));
+
     if !disk_image.exists() {
         panic!(
             "Disk image does not exist at {} after bootloader build",
