@@ -1,4 +1,4 @@
-name: Rust
+name: CI
 
 on:
   push:
@@ -17,6 +17,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build kernel
-      run: cargo build --manifest-path=kernel/Cargo.toml
+      run: cd kernel; cargo build --release
     - name: Build bootloader
-      run: cd xtask; cargo xtask image ../target/x86_64-arc/kernel
+      run: cd xtask; cargo xtask image ../target/x86_64-arc/release/kernel
