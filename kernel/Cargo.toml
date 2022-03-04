@@ -8,14 +8,12 @@ edition = "2021"
 [dependencies]
 bootloader = "0.10.12"
 arch = { path = "../arch" }
+uart_16550 = "0.2.14"
+spin = { version = "0.9.0", features = ["lazy"] }
 
 [dev-dependencies]
 bootloader-locator = "0.0.4"
 
 # Disables unwinding
 [profile.dev]
-panic = "abort"
 opt-level = 1
-
-[profile.release]
-panic = "abort"
