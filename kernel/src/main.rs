@@ -12,8 +12,6 @@ use arch::{hal, Hal};
 use bootloader::{entry_point, BootInfo};
 use core::panic::PanicInfo;
 
-static HELLO: &[u8] = b"Hello world!";
-
 entry_point!(kmain);
 
 fn kmain(boot_info: &'static mut BootInfo) -> ! {
