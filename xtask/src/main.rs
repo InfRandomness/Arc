@@ -1,12 +1,33 @@
 extern crate core;
 
 use std::env;
-use std::env::Args;
-use std::iter::Skip;
+use std::env::args;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 type DynError = Box<dyn std::error::Error>;
+
+#[derive(Debug, Clone)]
+enum Tasks {
+    Kbuild,
+    Ktest,
+    Image,
+}
+
+#[derive(Clone)]
+struct Arguments {
+    task: Tasks,
+    target: String,
+}
+
+impl Default for Arguments {
+    fn default() -> Self {
+        Arguments {
+            task: Tasks::Kbuild,
+            target: "x86_64-unknown-none".to_string(),
+        }
+    }
+}
 
 fn main() {
     if let Err(e) = try_main() {
@@ -15,40 +36,99 @@ fn main() {
     }
 }
 
+fn parse_arguments(args_struct: &mut Arguments) {
+    println!("{:?}", env::args().nth(1));
+    args_struct.task = match env::args()
+        .nth(1)
+        .expect("No valid task provided, defaulting to kbuild")
+        .as_str()
+    {
+        "kbuild" | "build" => Tasks::Kbuild,
+        "ktest" | "test" => Tasks::Ktest,
+        "image" => Tasks::Image,
+        _ => panic!("Non valid operation provided."),
+    };
+
+    for x in env::args() {
+        if x.as_str() == "--target" {
+            args_struct.target = match env::args()
+                    .next()
+                    .expect("No valid value provided, defaulting to x86_64-unknown-none.")
+                    .as_str()
+                    // Validates the entered values
+                {
+                    "x86_64-unknown-none" => "x86_64-unknown-none".to_string(),
+                    "aarch64-unkown-none" => {
+                        println!("The bootloader does not currently support the aarch64 architecture. Only the kernel will be built.");
+                        args_struct.task = Tasks::Kbuild;
+                        "aarch64-unkown-none".to_string()
+                    }
+                    _ => panic!("Architecture not supported yet, if you would like to get involved make sure to open an issue on https://github.com/InfRandomness/Arc/issues?q=is%3Aissue+is%3Aopen")
+                }
+        }
+    }
+}
+
 fn try_main() -> Result<(), DynError> {
-    let task = env::args().nth(1);
-    match task.as_deref() {
-        Some("image") => image(std::env::args().skip(2))?,
-        _ => print_help(),
+    let mut arguments = Arguments::default();
+    parse_arguments(&mut arguments);
+    match arguments.task {
+        Tasks::Kbuild => build_kernel(&arguments.target),
+        Tasks::Ktest => test(),
+        Tasks::Image => image(&arguments.target)?,
     }
     Ok(())
 }
 
-fn image(mut args: Skip<Args>) -> Result<(), DynError> {
+/// Runs the kernel's test suite.
+fn test() {
+    const _TEST_ARGS: &[&str] = &[
+        "-device",
+        "isa-debug-exit,iobase=0xf4,iosize=0x04",
+        "-serial",
+        "stdio",
+        "-display",
+        "none",
+        "--no-reboot",
+    ];
+    const _TEST_TIMEOUT_SECS: u64 = 10;
+
+    println!("thing");
+}
+
+/// Builds the kernel.
+fn build_kernel(target: &String) {
+    println!("Compiling the kernel");
+    let mut build_cmd = Command::new(env!("CARGO"));
+    // Set the current dir as the kernel dir
+    build_cmd.current_dir(
+        project_root::get_project_root()
+            .expect("An error has occurred while acquiring the project root")
+            .join("../kernel"),
+    );
+    build_cmd.arg("build");
+    build_cmd.arg("--target").arg(target);
+
+    if !build_cmd.status().unwrap().success() {
+        panic!("Build failed");
+    }
+}
+
+/// Parses the arguments to transform the kernel into a bootable image.
+fn image(target: &String) -> Result<(), DynError> {
+    println!("Creating an image");
+    build_kernel(target);
     // TODO: Make a friendlier experience by telling the path was not found
     let kernel_binary_path = {
         let path = PathBuf::from(
-            args.next()
+            args()
+                .next()
                 .expect("No path to the kernel binary was found."),
         );
         path.canonicalize().unwrap()
     };
 
-    /*
-    let target = args.next().map_or_else(
-        || {
-            println!("No target value was provided, defaulting to x86_64_unknown_uefi");
-            "x86_64-unknown-uefi"
-        },
-        |image_str| match image_str.as_ref() {
-            "x86_64-arc" | "x86_64-unknown-none" => "x86_64-unknown-none",
-            "aarch64-unknown-none" | "aarch64-arc.json" => {
-                panic!("The bootloader currently doesn't support ARM targets.");
-            }
-            _ => panic!("Unsupported architecture."),
-        },
-    );
-    */
+    build_kernel(target);
 
     create_disk_image(&kernel_binary_path);
     Ok(())
@@ -58,7 +138,7 @@ fn create_disk_image(kernel_binary_path: &Path) -> PathBuf {
     //TODO: Fix this terrible hack.
     let project_root = project_root::get_project_root().expect("Unable to find a project root");
 
-    let kernel_manifest_path = PathBuf::from(project_root).join("../kernel/Cargo.toml");
+    let kernel_manifest_path = project_root.join("../kernel/Cargo.toml");
     let bootloader_manifest_path =
         bootloader_locator::locate_bootloader("bootloader", Some(&kernel_manifest_path))
             .unwrap_or_else(|err| {
@@ -106,12 +186,4 @@ fn create_disk_image(kernel_binary_path: &Path) -> PathBuf {
         );
     }
     disk_image
-}
-
-fn print_help() {
-    eprintln!(
-        r#"Tasks:
-image            builds an image of the kernel and the bootloader
-"#
-    )
 }

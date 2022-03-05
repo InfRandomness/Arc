@@ -9,3 +9,4 @@ edition = "2021"
 bootloader-locator = { git = "https://github.com/InfRandomness/bootloader-locator.git", branch = "metadata_path" }
 locate-cargo-manifest = "0.2.2"
 project-root = "0.2.2"
+runner-utils = "0.0.2"
