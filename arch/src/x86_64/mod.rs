@@ -1,5 +1,5 @@
 use x86_64;
-use x86_64::instructions::port::{PortGeneric, ReadWriteAccess};
+use x86_64::instructions::port::{Port, PortGeneric, ReadWriteAccess};
 
 pub struct Hal;
 
@@ -8,11 +8,11 @@ impl super::Hal for Hal {
         x86_64::instructions::hlt();
     }
 
-    fn wait(n: usize) {
+    fn wait(_n: usize) {
         todo!()
     }
 
-    fn irq_enable(enable: bool) {
+    fn irq_enable(_enable: bool) {
         todo!()
     }
 
@@ -23,7 +23,9 @@ impl super::Hal for Hal {
         x86_64::instructions::interrupts::without_interrupts(f)
     }
 
-    fn port<F>(port: u16) -> PortGeneric<F, ReadWriteAccess> {
+    fn port<F>(port: u16) -> Port<F> {
         PortGeneric::new(port)
     }
+
+    type Port<F> = PortGeneric<F, ReadWriteAccess>;
 }
