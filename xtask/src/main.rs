@@ -1,11 +1,11 @@
 extern crate core;
 
 use std::env;
-use std::env::args;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
+use std::time::Duration;
 
 type DynError = Box<dyn std::error::Error>;
 
@@ -49,6 +49,7 @@ enum Tasks {
 struct Arguments {
     task: Tasks,
     target: Targets,
+    kernel_binary_path: PathBuf,
 }
 
 impl Default for Arguments {
@@ -56,6 +57,11 @@ impl Default for Arguments {
         Arguments {
             task: Tasks::Kbuild,
             target: Targets::X86_64,
+            kernel_binary_path: PathBuf::from(
+                env::var("CARGO_MANIFEST_DIR").expect("Unable to locate the Cargo manifest dir."),
+            )
+            //TODO: Append architecture path
+            .join("../target/x86_64-unknown-none/debug/kernel"),
         }
     }
 }
@@ -81,8 +87,9 @@ fn parse_arguments(args_struct: &mut Arguments) {
     };
 
     for x in env::args() {
-        if x.as_str() == "--target" {
-            args_struct.target = match env::args()
+        match x.as_str() {
+            "--target" => {
+                args_struct.target = match env::args()
                     .next()
                     .expect("No valid value provided, defaulting to x86_64-unknown-none.")
                     .as_str()
@@ -96,6 +103,23 @@ fn parse_arguments(args_struct: &mut Arguments) {
                     }
                     _ => panic!("Architecture not supported yet, if you would like to get involved make sure to open an issue on https://github.com/InfRandomness/Arc/issues?q=is%3Aissue+is%3Aopen")
                 }
+            }
+            "--kernel-binary-path" => {
+                args_struct.kernel_binary_path = {
+                    let path = PathBuf::from(env::args().next().expect("No valid value provided."));
+                    if path.exists() {
+                        path
+                    } else {
+                        println!("The provided binary path does not exist. using default.");
+                        PathBuf::from(
+                            env::var("CARGO_MANIFEST_DIR")
+                                .expect("Unable to locate the Cargo manifest dir."),
+                        )
+                        .join("../target/x86_64-unknown-none/debug/kernel")
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -104,16 +128,18 @@ fn try_main() -> Result<(), DynError> {
     let mut arguments = Arguments::default();
     parse_arguments(&mut arguments);
     match arguments.task {
-        Tasks::Kbuild => build_kernel(&arguments.target),
-        Tasks::Ktest => test(),
-        Tasks::Image => image(&arguments.target)?,
+        Tasks::Kbuild => build_kernel(&arguments),
+        Tasks::Ktest => test_kernel(&arguments),
+        Tasks::Image => {
+            let _ = image(&arguments);
+        }
     }
     Ok(())
 }
 
 /// Runs the kernel's test suite.
-fn test() {
-    const _TEST_ARGS: &[&str] = &[
+fn test_kernel(arguments: &Arguments) {
+    const TEST_ARGS: &[&str] = &[
         "-device",
         "isa-debug-exit,iobase=0xf4,iosize=0x04",
         "-serial",
@@ -122,13 +148,32 @@ fn test() {
         "none",
         "--no-reboot",
     ];
-    const _TEST_TIMEOUT_SECS: u64 = 10;
+    const TEST_TIMEOUT_SECS: u64 = 10;
 
-    println!("thing");
+    let image = image(arguments);
+    println!("Running the kernel tests");
+
+    let mut cmd = Command::new("qemu-system-x86_64");
+    cmd.arg("-drive").arg(format!(
+        "format=raw,file={}",
+        image.expect("Unable to locate the image file").display()
+    ));
+
+    if runner_utils::binary_kind(arguments.kernel_binary_path.as_path()).is_test() {
+        cmd.args(TEST_ARGS);
+        let exit_status =
+            runner_utils::run_with_timeout(&mut cmd, Duration::from_secs(TEST_TIMEOUT_SECS))
+                .unwrap();
+
+        match exit_status.code() {
+            Some(33) => println!("Test Successful"),
+            other => panic!("Test failed (exit code: {:?})", other),
+        }
+    }
 }
 
 /// Builds the kernel.
-fn build_kernel(target: &Targets) {
+fn build_kernel(arguments: &Arguments) {
     println!("Compiling the kernel");
     let mut build_cmd = Command::new(env!("CARGO"));
     // Set the current dir as the kernel dir
@@ -138,7 +183,9 @@ fn build_kernel(target: &Targets) {
             .join("../kernel"),
     );
     build_cmd.arg("build");
-    build_cmd.arg("--target").arg(format!("{}", target));
+    build_cmd
+        .arg("--target")
+        .arg(format!("{}", arguments.target));
 
     if !build_cmd.status().unwrap().success() {
         panic!("Build failed");
@@ -146,21 +193,11 @@ fn build_kernel(target: &Targets) {
 }
 
 /// Parses the arguments to transform the kernel into a bootable image.
-fn image(target: &Targets) -> Result<(), DynError> {
+fn image(arguments: &Arguments) -> Result<PathBuf, DynError> {
     println!("Creating an image");
-    build_kernel(target);
-    // TODO: Make a friendlier experience by telling the path was not found
-    let kernel_binary_path = {
-        let path = PathBuf::from(
-            args()
-                .next()
-                .expect("No path to the kernel binary was found."),
-        );
-        path.canonicalize().unwrap()
-    };
+    build_kernel(arguments);
 
-    create_disk_image(&kernel_binary_path);
-    Ok(())
+    Ok(create_disk_image(&arguments.kernel_binary_path))
 }
 
 fn create_disk_image(kernel_binary_path: &Path) -> PathBuf {
@@ -183,6 +220,7 @@ fn create_disk_image(kernel_binary_path: &Path) -> PathBuf {
     build_cmd
         .arg("--kernel-manifest")
         .arg(&kernel_manifest_path);
+    println!("{:?}", &kernel_binary_path);
     build_cmd.arg("--kernel-binary").arg(&kernel_binary_path);
     // TODO: Fix this too.
     build_cmd.arg("--target-dir").arg(
