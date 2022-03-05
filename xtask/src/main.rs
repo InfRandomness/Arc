@@ -2,10 +2,41 @@ extern crate core;
 
 use std::env;
 use std::env::args;
+use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::str::FromStr;
 
 type DynError = Box<dyn std::error::Error>;
+
+#[derive(Clone, Copy)]
+enum Targets {
+    X86_64,
+    Aarch64,
+}
+
+impl FromStr for Targets {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let target = match s {
+            "x86_64-unknown-none" => Targets::X86_64,
+            "aarch64-unknown-none" => Targets::Aarch64,
+            _ => panic!("Unsupported architecture"),
+        };
+        Ok(target)
+    }
+}
+
+impl Display for Targets {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let target = match self {
+            Targets::X86_64 => "x86_64-unknown-none",
+            Targets::Aarch64 => "aarch64-unknown-none",
+        };
+        write!(f, "{}", target)
+    }
+}
 
 #[derive(Debug, Clone)]
 enum Tasks {
@@ -17,14 +48,14 @@ enum Tasks {
 #[derive(Clone)]
 struct Arguments {
     task: Tasks,
-    target: String,
+    target: Targets,
 }
 
 impl Default for Arguments {
     fn default() -> Self {
         Arguments {
             task: Tasks::Kbuild,
-            target: "x86_64-unknown-none".to_string(),
+            target: Targets::X86_64,
         }
     }
 }
@@ -57,11 +88,11 @@ fn parse_arguments(args_struct: &mut Arguments) {
                     .as_str()
                     // Validates the entered values
                 {
-                    "x86_64-unknown-none" => "x86_64-unknown-none".to_string(),
+                    "x86_64-unknown-none" => Targets::X86_64,
                     "aarch64-unkown-none" => {
                         println!("The bootloader does not currently support the aarch64 architecture. Only the kernel will be built.");
                         args_struct.task = Tasks::Kbuild;
-                        "aarch64-unkown-none".to_string()
+                        Targets::Aarch64
                     }
                     _ => panic!("Architecture not supported yet, if you would like to get involved make sure to open an issue on https://github.com/InfRandomness/Arc/issues?q=is%3Aissue+is%3Aopen")
                 }
@@ -97,7 +128,7 @@ fn test() {
 }
 
 /// Builds the kernel.
-fn build_kernel(target: &String) {
+fn build_kernel(target: &Targets) {
     println!("Compiling the kernel");
     let mut build_cmd = Command::new(env!("CARGO"));
     // Set the current dir as the kernel dir
@@ -107,7 +138,7 @@ fn build_kernel(target: &String) {
             .join("../kernel"),
     );
     build_cmd.arg("build");
-    build_cmd.arg("--target").arg(target);
+    build_cmd.arg("--target").arg(format!("{}", target));
 
     if !build_cmd.status().unwrap().success() {
         panic!("Build failed");
@@ -115,7 +146,7 @@ fn build_kernel(target: &String) {
 }
 
 /// Parses the arguments to transform the kernel into a bootable image.
-fn image(target: &String) -> Result<(), DynError> {
+fn image(target: &Targets) -> Result<(), DynError> {
     println!("Creating an image");
     build_kernel(target);
     // TODO: Make a friendlier experience by telling the path was not found
