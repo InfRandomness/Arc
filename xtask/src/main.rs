@@ -128,8 +128,6 @@ fn image(target: &String) -> Result<(), DynError> {
         path.canonicalize().unwrap()
     };
 
-    build_kernel(target);
-
     create_disk_image(&kernel_binary_path);
     Ok(())
 }
